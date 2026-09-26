@@ -93,8 +93,8 @@ Contributions for additional languages are welcome — add a `l10n/<locale>.json
 
 ## Requirements
 
-- Nextcloud 28–33
-- PHP 8.1 or later
+- Nextcloud 33–35
+- PHP 8.3 or later
 - Redis or Memcached recommended (app works without it, using in-process cache)
 
 ## License
@@ -128,6 +128,9 @@ FP_TEST_PASSWORD=your-admin-password \
 Integration tests are skipped automatically if `FP_TEST_PASSWORD` is not set. They
 create and clean up their own folders/protections, but expect a `team` group folder
 and an `exttest` external storage to exist for the group-folder/external-storage cases.
+`build/nc-instance.sh` brings up a disposable instance of each supported Nextcloud
+version with both fixtures already in place and runs the two suites against it — see
+[build/README.md](build/README.md).
 
 ### Frontend build
 

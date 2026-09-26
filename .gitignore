@@ -46,3 +46,6 @@ appinfo/signature.json
 /vendor/
 .phpunit.result.cache
 *.tmp.*
+
+# Per-version info.xml copies written by build/nc-instance.sh
+/build/.generated/

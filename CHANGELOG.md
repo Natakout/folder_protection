@@ -1,5 +1,18 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- **Declared compatibility widened from Nextcloud 33–34 to 33–35** (`info.xml` now
+  reads `min-version="33" max-version="35"`). Checked against a disposable instance of
+  each version, each with the `groupfolders` release built for it: the unit suite
+  (25 tests) and the integration suite (15 tests) pass, and in a real browser the lock
+  badge, the hidden row and selection-bar actions, the admin page and the dashboard
+  widget work on 33, 34 and 35. Every instance ran PHP 8.3 or newer, so the PHP
+  requirement stays at 8.3.
+- The README still said "Nextcloud 28–33, PHP 8.1 or later" — out of date since 2.4.0
+  narrowed `info.xml`. It now matches `info.xml`.
+
 ## [2.4.1] - 2026-09-11
 
 ### Fixed
