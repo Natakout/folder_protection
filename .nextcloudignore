@@ -9,7 +9,7 @@ vendor/
 
 # --- Fontes / build (js/ e css/ já vão compilados) ---------------------------
 src/
-# Ferramentas de manutenção (compose da instância NC 34 de verificação, notas).
+# Ferramentas de manutenção (instâncias descartáveis NC 31–35 de verificação, notas).
 # Nada aqui é necessário para correr a app.
 build/
 webpack.config.js

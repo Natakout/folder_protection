@@ -128,6 +128,9 @@ FP_TEST_PASSWORD=your-admin-password \
 Integration tests are skipped automatically if `FP_TEST_PASSWORD` is not set. They
 create and clean up their own folders/protections, but expect a `team` group folder
 and an `exttest` external storage to exist for the group-folder/external-storage cases.
+`build/nc-instance.sh` brings up a disposable instance of each supported Nextcloud
+version with both fixtures already in place and runs the two suites against it — see
+[build/README.md](build/README.md).
 
 ### Frontend build
 

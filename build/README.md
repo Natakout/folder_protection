@@ -10,90 +10,95 @@ It exists for working on the app, not for running it.
 
 | File | What it is |
 |---|---|
-| `docker-compose.nc34.yml` | Disposable Nextcloud 34 instance, port 8085, used to verify the app against the `<max-version>` it declares. |
-| `docker-compose.nc35.yml` | Disposable Nextcloud 35 instance, port 8086, same purpose for the current `<max-version>`. |
+| `nc-instance.sh` | `up` / `test` / `down` / `ls` for one disposable Nextcloud instance per supported version. |
+| `docker-compose.nc.yml` | The instance itself (Nextcloud + MariaDB + Redis), parameterised by `NC_VERSION` / `NC_PORT`. Not meant to be run by hand. |
 
-## Verifying against Nextcloud 34
+## Checking the app against a Nextcloud version
 
-The development instance on 8080 runs NC 33. Declaring `max-version="34"` without
-running anything on 34 is a guess, so this compose brings up a throwaway 34
-alongside it. Its own project name, containers, port and volumes mean it cannot
-disturb the 8080 instance.
-
-```bash
-docker compose -p folderprot-nc34 -f build/docker-compose.nc34.yml up -d
-```
-
-Admin credentials are `ncadmin` / `folderprot-nc34-verify`. Tear it down with
-`down -v` — without the `-v` the volumes survive and the next `up` resumes the
-old instance instead of building a clean one.
+Declaring a `<nextcloud min-version max-version>` range without running anything
+on its ends is a guess, so each version in the range gets its own throwaway
+instance. Each has its own project name, containers, port and volumes, so they
+run side by side and cannot disturb the development instance on 8080.
 
 ```bash
-docker compose -p folderprot-nc34 -f build/docker-compose.nc34.yml down -v
+build/nc-instance.sh up 33      # first run pulls the image and installs: a couple of minutes
+build/nc-instance.sh test 33    # unit + integration suites against it
+build/nc-instance.sh down 33    # -v: without it the next `up` resumes the old instance
+build/nc-instance.sh ls
 ```
 
-### Two things the compose alone does not give you
+| NC | Port |
+|---|---|
+| 31 | 8100 |
+| 32 | 8101 |
+| 33 | 8102 |
+| 34 | 8103 |
+| 35 | 8104 |
 
-**`groupfolders` cannot come from `apps/`.** The compose mounts the whole `apps/`
-tree (the integration tests need group folders), but the copy checked in there is
-21.0.13, which declares `max-version="33"` and so refuses to install on 34.
-Replacing it would break the NC 33 instance, which shares the same directory.
-Instead give the 34 instance its own apps directory *inside its own volume* and
-install a 34-compatible build there:
+Admin login is `ncadmin` / `folderprot-ncNN-verify` (NN = the version). To try a
+version that is not in the table, add it to `VERSIONS` / `PORTS` in the script.
 
-```bash
-docker exec folderprot-nc34-app sh -c \
-    'mkdir -p /var/www/html/nc34_apps && chown www-data:www-data /var/www/html/nc34_apps'
-docker exec folderprot-nc34-app bash -c '
-    cd /var/www/html
-    php occ config:system:set apps_paths 2 path --value=/var/www/html/nc34_apps
-    php occ config:system:set apps_paths 2 url  --value=/nc34_apps
-    php occ config:system:set apps_paths 2 writable --value=true --type=boolean'
+### What `up` does
 
-docker exec folderprot-nc34-app bash -c '
-    cd /tmp && curl -sL -o gf.tar.gz \
-      https://github.com/nextcloud-releases/groupfolders/releases/download/v22.0.6/groupfolders-v22.0.6.tar.gz
-    tar xzf gf.tar.gz -C /var/www/html/nc34_apps
-    chown -R www-data:www-data /var/www/html/nc34_apps/groupfolders'
+- **Mounts this app only.** `groupfolders`, which the integration suite needs, is
+  installed from the App Store, so each version gets the release built for it
+  (19.x for NC 31 … 23.x for NC 35). It cannot come from a shared `apps/`
+  directory: one copy there cannot satisfy every version's `max-version`.
+- **Widens the app's `info.xml` inside the container.** Nextcloud refuses to enable
+  an app outside its declared range, and `occ app:enable --force` waives only
+  `max-version`, never `min-version` — so a version below the declared minimum
+  could not be tested at all. `up` writes a copy of `appinfo/info.xml` with the
+  `<nextcloud>` range set to exactly that version (into `build/.generated/`,
+  git-ignored) and bind-mounts it read-only over the real one. The file in the
+  repo is untouched, and `up` says so when the version is outside the range it
+  declares. That is what lets the matrix answer "would this work on NC N?" for
+  an N that `info.xml` does not yet list.
+- **Upgrades an existing instance.** Every release bumps `info.xml`'s `<version>`,
+  which leaves an instance from an earlier `up` in "requires upgrade" — occ then
+  refuses everything but `upgrade`, `app:enable` included. `up` runs `occ upgrade`
+  when `occ status` says `needsDbUpgrade: true`.
+- **Creates the two fixtures the integration suite needs**: a group folder named
+  `team` (the `admin` group has all permissions) and a local external storage
+  mounted at `/exttest`. Without them three tests fail on PROPFIND with 404.
+  If there is no `groupfolders` release for a brand-new Nextcloud yet, `up` warns
+  and carries on, and the suites then show exactly which tests needed it.
 
-docker exec folderprot-nc34-app php /var/www/html/occ app:enable groupfolders
-```
+`test` runs both suites with the `phpunit` in this app's own `vendor/`, so
+`composer install` must have been run on the host first. A clean run is 25/25
+unit and 15/15 integration.
 
-`occ app:getpath groupfolders` should print the `nc34_apps` path, confirming the
-22.x build won over the 21.x one in the shared mount.
+### Last verified
 
-**The tests need two fixtures.** A group folder named `team` and an external
-storage mounted at `/exttest`; without them three tests fail on PROPFIND with 404.
+Run on 2026-09-26 against 2.4.1 plus the lock-badge rewrite on `main` (the badge
+rendered through `@nextcloud/files`):
 
-```bash
-docker exec folderprot-nc34-app php /var/www/html/occ groupfolders:create team
-docker exec folderprot-nc34-app php /var/www/html/occ groupfolders:group 1 admin read write share delete
+| NC | PHP | groupfolders | unit | integration | browser (badge, hidden actions, admin, widget) |
+|---|---|---|---|---|---|
+| 31.0.14 | 8.3.30 | 19.1.20 | 25/25 | 15/15 | **fails** |
+| 32.0.15 | 8.3.35 | 20.1.18 | 25/25 | 15/15 | **fails** |
+| 33.0.9 | 8.4.26 | 21.0.15 | 25/25 | 15/15 | 15/15 |
+| 34.0.4 | 8.5.10 | 22.0.6 | 25/25 | 15/15 | 15/15 |
+| 35.0.0 | 8.5.10 | 23.0.1 | 25/25 | 15/15 | 15/15 |
 
-docker exec folderprot-nc34-app sh -c 'mkdir -p /tmp/nc-exttest && chown www-data:www-data /tmp/nc-exttest'
-docker exec folderprot-nc34-app php /var/www/html/occ app:enable files_external
-docker exec folderprot-nc34-app php /var/www/html/occ files_external:create \
-    /exttest local null::null -c datadir=/tmp/nc-exttest
-```
+That is why `info.xml` says 33–35 and not 31–35: on 31 and 32 the server side is
+fine, but the new badge never renders and, because the "hide move/copy" logic keys
+on the rendered badge, move/copy is no longer hidden for protected folders (the
+server still refuses it with 403). On NC 31 the listing's PROPFIND does not ask
+for `nc:is-protected` / `nc:is-deletable` at all — `window._nc_dav_properties`
+lacks them — although the server answers both when asked directly; the
+`@nextcloud/files` 4.x registration evidently does not reach the Files app of
+those versions. The UI before the rewrite (2.4.0) did pass on all five.
 
-Note `groupfolders:group` takes the permissions as a whitespace-separated list
-including `read`; omitting `read` leaves the group with none. The plain-text
-`groupfolders:list` table does not render them — check `--output=json_pretty`,
-where the group should show `"permissions": 31`.
+Every instance ran PHP 8.3 or newer — that is all the images ship — so nothing
+here says anything about PHP 8.1/8.2, and `info.xml` keeps `php min-version="8.3"`.
+Re-run the matrix whenever the declared range changes or a new Nextcloud is
+released.
 
-Then run the suites:
-
-```bash
-docker exec folderprot-nc34-app \
-    php /var/www/html/custom_apps/folder_protection/vendor/bin/phpunit \
-    -c /var/www/html/custom_apps/folder_protection/phpunit.xml
-
-docker exec -e FP_TEST_PASSWORD=folderprot-nc34-verify -e FP_TEST_BASE_URL=http://localhost \
-    folderprot-nc34-app \
-    php /var/www/html/custom_apps/folder_protection/vendor/bin/phpunit \
-    -c /var/www/html/custom_apps/folder_protection/phpunit.integration.xml
-```
-
-A clean run is 23/23 unit and 14/14 integration.
+The two suites cover enforcement over WebDAV and the caching logic. They do not
+cover the browser side, which depends on the Files app's DOM and is the part most
+likely to differ between Nextcloud versions — the browser column above was checked
+by driving a real Chromium against each instance, and that script is not in this
+repo. Check it by hand (or script it) before widening the range.
 
 ## Verifying against Nextcloud 35
 
